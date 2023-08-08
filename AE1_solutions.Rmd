@@ -1,0 +1,181 @@
+---
+title: "Exploratory Data Analysis"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(learnr)
+library(tidyverse)
+options(digits = 3)
+
+gradebook <- read.csv("https://raw.githubusercontent.com/sta238/data/main/gradebook.csv")
+```
+
+## Data 
+
+The data for this exercise is named `gradebook`. It represents student marks* for assessments given in a course (*marks have been simulated, not real). 
+Preview the data using `glimpse`. 
+```{r preview, exercise=TRUE}
+glimpse(gradebook)
+```
+`glimpse()` is a quick way to see the variable names in your data, get the data types of each column, and view the first few entries in the table. 
+
+Although the gradebook data has been set up with this exercise, it is also available on GitHub. Read in the gradebook raw data from GitHub, give it a different name, and show that it looks to be the same `gradebook` data.
+```{r load_data, exercise=TRUE}
+df <- read.csv("https://raw.githubusercontent.com/sta238/data/main/gradebook.csv")
+glimpse(df)
+```
+
+One of the variables in `gradebook` called `ids` and it represents student ids numbers. All other variables represent different assessments. Create a dataframe that only has marks in it. Show a `glimpse` of this dataframe to show that it does not include `ids`.
+```{r no_ids, exercise=TRUE}
+glimpse(gradebook[,-1])
+
+# or
+
+glimpse(gradebook %>% select(-ids))
+```
+
+We may want to look up certain students. Try manipulating the data in these cases: 
+```{r filter_on_id, exercise=TRUE}
+# What are the marks for the student with id number 42?
+gradebook %>% filter(ids==42)
+
+# Which observation have marks over 0.96 on the midterm?
+gradebook %>% filter(midterm > 0.96)
+
+# Which students got a 1.0 on Assignment 2?
+gradebook %>% filter(assignment2==1.0) %>% select(ids)
+```
+
+
+## Numerical summaries
+
+How many students are in the class?
+```{r n_students, exercise=TRUE}
+nrow(gradebook)
+
+#or
+
+length(unique(gradebook$ids))
+```
+
+Get a 5-number summary of all the assessments in the gradebook.
+```{r summarize, exercise=TRUE}
+summary(gradebook[,-1])
+
+#or
+
+gradebook %>%
+  select(-ids) %>%
+  summary()
+```
+
+
+Compute the mean and median of the exam. How do they compare? True or false: The mean is less than the median?
+```{r compare_centers, exercise=TRUE}
+xbar <- mean(gradebook$exam)
+xmed <- median(gradebook$exam)
+xbar # mean
+xmed # median
+
+# The mean less than the median?
+xbar < xmed
+
+#or (advanced)
+ifelse(xbar==xmed, "The mean and median are equal",
+       ifelse(xbar>xmed, "The mean is greater than the median", 
+              "The mean is less than the median")
+       )
+```
+
+Compute the sample variance, the standard deviation, and the median absolute deviation for the exam. 
+```{r compare_variability, exercise=TRUE}
+n <- nrow(gradebook)
+xbar <- mean(gradebook$exam)
+(n-1)^(-1) * sum((gradebook$exam-xbar)^2) # sample variance
+
+sd(gradebook$exam) # standard deviation
+
+xmed <- median(gradebook$exam)
+median( abs(gradebook$exam - xmed) ) # MAD
+```
+
+
+
+
+
+## Graphical summaries
+
+In the summary for the assignment, notice that all the statistics (aside from the mean) are whole numbers if multiplied by 10. This suggests they may be discrete variables. To confirm, find the set of distinct values of marks for `assignment1` and the set of distinct values of marks for `assignment2`.
+```{r discrete_vars, echo=FALSE, exercise=TRUE}
+# The unique values for assignment1 are
+gradebook$assignment1 %>% unique() %>% sort()
+
+# The unique values for assignment2 are
+gradebook$assignment2 %>% unique() %>% sort()
+```
+
+
+Run the following code to create plots of the discrete variables:
+```{r plots_discrete, exercise=TRUE}
+# Transform the data into a longer format 
+assignments_long <- gradebook %>% 
+  pivot_longer(cols = c(assignment1, assignment2), names_to = "test", values_to = "marks") 
+
+# Plot the assignment distributions as bar graphs
+assignments_long %>%
+  ggplot(aes(x = marks, colour = test)) +
+  theme_bw() +
+  scale_x_continuous(breaks=seq(0,1,0.1)) +
+  facet_wrap(vars(test)) +
+  geom_bar(aes(y = after_stat(count / max(count))), width=0.1, alpha = 0.2, show.legend = FALSE)
+```
+Some sections of this code may be new to you, particularly the last 3 lines do. Try looking them up and playing around with different values to see what happens. It is particularly useful to know what `aes(y = after_stat(prop))` does. 
+
+
+Plot the exam mark as a histogram and a KDE on the same plot. The steps are broken down below to add each layer to the plot, but some code needs to be filled in. Try commenting any code you fill in.
+```{r layers, exercise=TRUE}
+# Create a (named) plot of the marks in the gradebook data. Choose a theme.
+plot <- ggplot(gradebook, aes(x = exam)) + theme_bw()
+
+# Add a histogram layer to `plot` using the optimal binwidth.
+n <- nrow(gradebook)
+sigmahat <- sd(gradebook$exam)
+b <- (24*sqrt(pi))^(1/3) * sigmahat * (n^(-1/3))
+plot_hist <- plot +
+  geom_histogram(aes(y = after_stat(density)), binwidth = b, colour = "black",fill = "grey",alpha = .2)
+
+# Add an automatically computed KDE as a layer on the histogram plot. No need to name this plot. 
+plot_hist +
+  geom_density()
+```
+Note: This should display only one plot in the end (with both the histogram and density displayed). How could you check your intermediate steps?
+
+The supplemental text shows another method of plotting KDEs that doesn't use `ggplot`. Follow that method here to plot the KDE (no historgram this time):
+```{r base_density, exercise=TRUE}
+dens <- density(gradebook$exam)
+plot(dens)
+
+# # if you want to use ggplot, but not geom_histogram 
+# tibble(x = dens$x,y = dens$y) %>%
+#   ggplot(aes(x = x,y = y)) +
+#   theme_classic() +
+#   geom_line()
+```
+
+
+If we want to compare the distribution of the final exam marks to the distribution of the midterm marks, it would be helpful to see both densities on the same plot. To do that, we have to transform the data in the same way that we had to transform the assignment marks to plot them. Adapt the code for creating `assignments_long` to transform the test marks into a long format. Use `tests_long` to plot both densities on the same plot using `geom_density`. Hint: Investigate into the `colour` argument in `ggplot`.
+```{r plots_continuous, exercise=TRUE}
+tests_long <- gradebook %>%
+  pivot_longer(cols = c(midterm, exam),
+               names_to = "test", values_to = "marks")
+
+tests_long %>%
+  ggplot(aes(x = marks, colour = test)) +
+  theme_bw() +
+  geom_density()
+```
+
+
