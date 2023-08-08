@@ -1,0 +1,195 @@
+---
+title: "Learning"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup-hide, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(learnr)
+```
+
+## Set-up
+
+In AE3, we estimated the proportion of students who's get an A or higher in the course using a few different methods. But what if we wanted to model the exam grades?
+
+Let's consider the exam grades again from the dataset `gradebook`. The following code  has been run to load the data and the libraries we'll need:
+```{r setup, include=TRUE, message=FALSE}
+library(tidyverse)
+
+gradebook <- read.csv("https://raw.githubusercontent.com/sta238/data/main/gradebook.csv")
+```
+
+
+I want to estimate the mean and standard deviation of the exam grades. We have a few different methods. In (almost) all these approaches, we need a parametric model. We are going to use a Normal distribution and we will estimate the parameters. 
+ 
+Plot a KDE of the exam marks and normal distributions with 3 different sets of values for the parameters, all on the same plot. Here are some specific features to ensure that your plot (and code) are interpretable:
+- Include a comment stating what the model is.
+- Label the axes.
+- The KDE is a solid, black line.
+- The models are shown in blue, with different line types (eg. "dashed") for each set of parameter values.
+
+
+```{r model, exercise=TRUE}
+# Model is a Normal distribution, with parameters $\mu$ and $\sigma2$
+gradebook %>%
+  ggplot(aes(x = exam)) +
+  theme_classic() +
+  geom_density(color="black", linetype="solid") +
+  stat_function(fun = dnorm,  args = c(0.77, 0.12), n=100, color="blue", linetype="dashed") +
+  stat_function(fun = dnorm,  args = c(0.75, 0.13), n=100, color="blue", linetype="longdash") +
+  stat_function(fun = dnorm,  args = c(0.73, 0.15), n=100, color="blue", linetype="twodash") +
+  labs(x = "Exam marks",
+       y = "Density")
+
+```
+
+## Frequentist
+
+Recall the *maximum likelihood estimators* we derived in class, $\widehat\mu_{MLE}$ and $\widehat\sigma^2_{MLE}$ for $\mu$ and $\sigma^2$, respectively. Calculate *maximum likelihood estimates* using the exam data in `gradebook`.
+```{r MLEs, exercise=TRUE}
+muhat <- mean(gradebook$exam)
+
+sigma2hat <- mean( (gradebook$exam - muhat)^2 )
+
+cat("The MLE for mu is", muhat, " and the MLE for sigma is", sigma2hat) # combines the estimates into this sentence
+```
+
+In another lecture, we derived confidence intervals for $\mu$ and $\sigma^2$. Compute the 95% confidence intervals here:
+
+```{r CIs, exercise=TRUE}
+xbar <- mean(gradebook$exam)
+sn <- sd(gradebook$exam)
+n <- length(gradebook$exam)
+
+cat("The 95% confidence interval for mu is (", 
+    c(xbar - qt(0.025, df = n-1, lower.tail = FALSE) * sn/sqrt(n), 
+      xbar + qt(0.025, df = n-1, lower.tail = FALSE) * sn/sqrt(n)), ")")
+
+cat("The 95% confidence interval for sigma^2 is (", 
+    c((n-1)*sn^2 / qchisq(0.975, df = n-1), 
+      (n-1)*sn^2 / qchisq(0.025, df = n-1)), ")")
+```
+
+
+
+
+
+## Bayesian estimation
+
+Consider the following priors:
+$$
+\begin{align*}
+\mu |\sigma^2 &\sim N(\mu_0, \tau_0^2 \sigma^2) \\
+\frac{1}{\sigma^2} &\sim \text{Gamma}(\alpha_0,\beta_0)
+\end{align*}
+$$
+
+In the [E&R] textbook, there are a number of examples that deal with this model, the so-called *Location-Scale Normal Model*. 
+
+```{r hp-setup, echo=FALSE}
+exp_mu <- 0.70
+var_mu <- 0.015
+exp_tausq <- 70
+var_tausq <- 200
+```
+
+Let's use **moment-matching** to set hyperparameters. Start with the inverse of the variance of the exam grades $1/\sigma^2$, also called the precision of the exam grades, $\tau^2$. Say we believe that the precision of the exam grades is about 70 on average and the variance of about 200. 
+```{r}
+exp_tausq <- 70
+var_tausq <- 200
+```
+
+
+Compute the values of $\alpha_0$ and $\beta_0$ and plot the prior distribution of $\tau^2$.
+
+```{r hyperpara-precision, exercise=TRUE, exercise.setup="hp-setup"}
+alpha0 <- exp_tausq^2/var_tausq
+beta0 <- exp_tausq/var_tausq
+
+tibble(para_values = c(25, 125)) %>%
+  ggplot(aes(x = para_values)) +
+  theme_bw() +
+  stat_function(fun = dgamma, args = list(shape = alpha0, rate = beta0)) +
+  labs(title = "Prior density for precision", 
+       x = "tau^2", y = "prior") 
+```
+
+
+Say we believe that the mean of the exam grades is about 0.7 on average and the variance of about 0.015. 
+```{r}
+exp_mu <- 0.70
+var_mu <- 0.015
+```
+
+Assuming that $\sigma^2 \approx  1/\mathbb{E}[\tau^2]$, compute the values of $\mu_0$ and $\tau_0^2$ and plot the prior distribution of $\mu|\sigma^2$.
+
+```{r hyperpara-mean, exercise=TRUE, exercise.setup="hp-setup"}
+mu0 <- exp_mu
+tausq0 <- var_mu / (1/ exp_tausq)
+
+tibble(para_values = c(0, 1)) %>%
+  ggplot(aes(x = para_values)) +
+  theme_bw() +
+  stat_function(fun = dnorm, args = list(mean = mu0, sd = sqrt(var_mu))) +
+  labs(title = "Prior density for mu", 
+       x = "mu", y = "prior") 
+```
+
+Using the above hyperparameters, compute the posterior mode and a $95\%$ credible interval for the mean of the exam grades. ([E&R] Examples 7.2.5 & 7.2.8 will be *very* useful here.)
+
+```{r est-mu, exercise=TRUE, exercise.setup="hp-setup"}
+# set the values of hyperparameters (as before)
+alpha0 <- exp_tausq^2/var_tausq
+beta0 <- exp_tausq/var_tausq
+mu0 <- exp_mu
+tausq0 <- var_mu / (1/ exp_tausq)
+
+# data summaries
+n <- length(gradebook$exam)
+xbar <- mean(gradebook$exam)
+snsq <- var(gradebook$exam)
+
+# set-up the distributions
+mux <- (n+1/tausq0)^{-1} *(mu0/tausq0 + n*xbar)
+betax <- beta0 + (n-1)*snsq/2 + n*(xbar-mu0)^2 / (2*(1+n*tausq0))
+
+cat("The marginal posterior mode of mu is", mux, 
+    "with a 95% credible interval of mu (", 
+    mux + sqrt(1/(2*alpha0 + n)) * sqrt(2*betax / (n + 1/tausq0)) * qt(c(0.025, 0.975), df = 2*alpha0 + n),")")
+```
+
+In reading [E&R] Examples 7.2.1, 7.2.5 & 7.2.8, you may have noticed how complicated computing statistics from the posterior can be, if it's being done analytically. But we can approximate these statistics by sampling from the posterior distributions given in [E&R] Example 7.1.4. To do this, draw $N$ samples from the posterior for $\frac{1}{\sigma^2}$ and invert them, generating a random sample $\sigma_1^2,\sigma_2^2,..., \sigma_n^2$. Using each value of $\sigma_i^2$, draw a sample from the posterior for $\mu |\sigma^2$. The results is a random sample $(\mu_1, \sigma_1^2),(\mu_2,\sigma_2^2),..., (\mu_n,\sigma_n^2)$ from the joint posterior distribution. 
+
+Using the hyperparameters and data summaries from the previous code block, sample from the posterior distributions to get a random sample from the joint posterior distribtution. Plot the sampling densities of the posterior for $\mu$ and for $\sigma^2$ and compute a 95% credible interval for each.
+
+```{r est-sample, exercise=TRUE, exercise.setup="est-mu"}
+set.seed(238)
+N <- 1000
+
+post_sigma2 <- 1/rgamma(N, shape = alpha0 + n/2, rate = betax) #sample from tau^2 and invert
+
+post_mu <- numeric(N)
+for (i in 1:N) {
+  post_mu[i] <- rnorm(1, mean = mux, sd = sqrt(post_sigma2[i] / (n + 1/tausq0) ))
+}
+
+posterior_samp <- as_tibble(cbind(post_sigma2, post_mu)) 
+
+ggplot(data = posterior_samp, aes(x = post_mu)) +
+  theme_bw() +
+  geom_density() +
+  labs(title = "Posterior density for mu",
+       x="mu", y = "posterior")
+
+ggplot(data = posterior_samp, aes(x = post_sigma2)) +
+  theme_bw() +
+  geom_density() +
+  labs(title = "Posterior density for sigma^2", 
+       x="sigma^2", y = "posterior")
+
+cat("A 95% credible interveral for mu is (", 
+    quantile(post_mu, c(0.025,.975)),") and a 95% credible interveral for sigma^2 is (",
+    quantile(post_sigma2, c(0.025,.975)),")")
+
+```
